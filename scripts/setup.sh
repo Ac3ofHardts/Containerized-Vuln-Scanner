@@ -90,25 +90,37 @@ fi
 if [ -n "$CODEQL_LANG" ]; then
     echo "    Detected language: $CODEQL_LANG"
     
-    # Create database with less verbose output
+    # Create database without build (works for interpreted languages)
     codeql database create /tmp/codeql-db \
         --language=$CODEQL_LANG \
         --source-root=$TARGET \
-        --overwrite 2>&1 | tail -3
+        --overwrite \
+        --no-run-unnecessary-builds \
+        2>&1 | grep -E "Finalizing|Successfully" || true
     
-    # Run analysis with SARIF output only
-    codeql database analyze /tmp/codeql-db \
-        --format=sarif-latest \
-        --output=$OUTPUT/codeql.sarif \
-        --sarif-category=security \
-        --sarif-add-query-help \
-        -- 2>&1 | grep -E "Compiling|Running|Interpreting|Finalizing" || true
-    
-    CODEQL_COUNT=$(jq '[.runs[].results[]] | length' $OUTPUT/codeql.sarif 2>/dev/null || echo "0")
-    echo "    Found $CODEQL_COUNT findings - saved to codeql.sarif"
-    
-    # Cleanup
-    rm -rf /tmp/codeql-db
+    if [ -d /tmp/codeql-db ]; then
+        # Run analysis
+        codeql database analyze /tmp/codeql-db \
+            --format=sarif-latest \
+            --output=$OUTPUT/codeql.sarif \
+            --sarif-category=security \
+            -- \
+            2>&1 | grep -E "Running|Interpreting results" || true
+        
+        if [ -f $OUTPUT/codeql.sarif ]; then
+            CODEQL_COUNT=$(jq '[.runs[].results[]] | length' $OUTPUT/codeql.sarif 2>/dev/null || echo "0")
+            echo "    Found $CODEQL_COUNT findings - saved to codeql.sarif"
+        else
+            echo "    CodeQL analysis completed but no results generated"
+            CODEQL_COUNT=0
+        fi
+        
+        # Cleanup
+        rm -rf /tmp/codeql-db
+    else
+        echo "    CodeQL database creation failed, skipping analysis"
+        CODEQL_COUNT=0
+    fi
 else
     echo "    No supported languages detected, skipping CodeQL"
     CODEQL_COUNT=0
@@ -175,12 +187,18 @@ sudo cp scripts/scan-repo /usr/local/bin/
 sudo chmod +x /usr/local/bin/scan-repo
 
 echo ""
+echo "Installing generate-report command..."
+sudo cp scripts/generate-report /usr/local/bin/
+sudo chmod +x /usr/local/bin/generate-report
+
+echo ""
 echo "=================================="
 echo "Setup Complete!"
 echo "=================================="
 echo ""
 echo "Usage:"
 echo "  scan-repo <github-url> [output-name]"
+echo "  generate-report <scan-results-directory> [output-path/output.md]"
 echo ""
 echo "Example:"
 echo "  scan-repo https://github.com/OWASP/NodeGoat"

@@ -1,0 +1,94 @@
+#!/bin/bash
+
+# Usage: scan-repo <repo-url> [output-name]
+
+if [ -z "$1" ]; then
+    echo "Usage: scan-repo <repo-url> [output-name]"
+    echo "Example: scan-repo https://github.com/OWASP/NodeGoat"
+    echo "Example: scan-repo https://github.com/user/project client-acme"
+    exit 1
+fi
+
+REPO_URL="$1"
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Extract repo name from URL if no output name provided
+if [ -z "$2" ]; then
+    REPO_NAME=$(basename "$REPO_URL" .git)
+    OUTPUT_NAME="${REPO_NAME}-${TIMESTAMP}"
+else
+    OUTPUT_NAME="$2-${TIMESTAMP}"
+fi
+
+WORK_DIR="$HOME/assessments"
+REPO_DIR="$WORK_DIR/repos/$OUTPUT_NAME"
+RESULTS_DIR="$WORK_DIR/results/$OUTPUT_NAME"
+CONTAINER_NAME="scan-$OUTPUT_NAME"
+
+echo "=================================="
+echo "Security Assessment Workflow"
+echo "=================================="
+echo "Repository: $REPO_URL"
+echo "Output: $OUTPUT_NAME"
+echo "Results: $RESULTS_DIR"
+echo ""
+
+# Setup directories
+mkdir -p "$REPO_DIR"
+mkdir -p "$RESULTS_DIR"
+
+# Clone repository (shallow)
+echo "[1/5] Cloning repository..."
+git clone --depth=1 "$REPO_URL" "$REPO_DIR"
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to clone repository"
+    exit 1
+fi
+echo "✓ Cloned to $REPO_DIR"
+
+# Create scan container
+echo ""
+echo "[2/5] Creating scan container..."
+incus copy security-scanner "$CONTAINER_NAME"
+if [ $? -ne 0 ]; then
+    echo "ERROR: Failed to create container"
+    exit 1
+fi
+echo "✓ Container created: $CONTAINER_NAME"
+
+# Configure container
+echo ""
+echo "[3/5] Configuring container..."
+incus config set "$CONTAINER_NAME" raw.idmap "both $(id -u) 0"
+incus config device add "$CONTAINER_NAME" code disk source="$REPO_DIR" path=/target readonly=true
+incus config device add "$CONTAINER_NAME" output disk source="$RESULTS_DIR" path=/output
+echo "✓ Container configured"
+
+# Start and run scan
+echo ""
+echo "[4/5] Running security scans..."
+incus start "$CONTAINER_NAME"
+sleep 2  # Give container time to fully start
+incus exec "$CONTAINER_NAME" -- /opt/scanners/run-scans.sh /target /output
+
+# Cleanup
+echo ""
+echo "[5/5] Cleaning up..."
+incus stop "$CONTAINER_NAME"
+incus delete "$CONTAINER_NAME"
+rm -rf "$REPO_DIR"
+echo "✓ Container removed, repository cleaned up"
+
+echo ""
+echo "=================================="
+echo "Scan Complete!"
+echo "=================================="
+echo "Results saved to: $RESULTS_DIR"
+echo ""
+echo "View summary:"
+echo "  cat $RESULTS_DIR/summary.txt"
+echo ""
+echo "View findings:"
+echo "  jq '.results[] | {severity, path, line: .start.line, message}' $RESULTS_DIR/semgrep.json | less"
+echo "  jq '.[] | {Description, File, StartLine}' $RESULTS_DIR/gitleaks.json"
+echo ""

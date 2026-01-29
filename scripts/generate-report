@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""
+Security Assessment Report Generator
+Converts scan results (Semgrep, CodeQL, Gitleaks, Bandit) into a professional Markdown report
+"""
+
+import json
+import sys
+import os
+from pathlib import Path
+from datetime import datetime
+from collections import defaultdict
+
+def load_json(filepath):
+    """Safely load JSON file"""
+    try:
+        with open(filepath, 'r') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+def parse_semgrep(results_dir):
+    """Parse Semgrep JSON results"""
+    semgrep_file = results_dir / 'semgrep.json'
+    data = load_json(semgrep_file)
+    if not data or 'results' not in data:
+        return []
+    
+    findings = []
+    for result in data['results']:
+        severity_map = {'ERROR': 'Critical', 'WARNING': 'High', 'INFO': 'Medium'}
+        findings.append({
+            'tool': 'Semgrep',
+            'severity': severity_map.get(result['extra']['severity'], 'Medium'),
+            'title': result['check_id'].split('.')[-1].replace('-', ' ').title(),
+            'rule_id': result['check_id'],
+            'file': result['path'],
+            'line': result['start']['line'],
+            'message': result['extra']['message'],
+            'cwe': result['extra']['metadata'].get('cwe', []),
+            'owasp': result['extra']['metadata'].get('owasp', [])
+        })
+    return findings
+
+def parse_codeql(results_dir):
+    """Parse CodeQL SARIF results"""
+    codeql_file = results_dir / 'codeql.sarif'
+    data = load_json(codeql_file)
+    if not data or 'runs' not in data:
+        return []
+    
+    findings = []
+    for run in data['runs']:
+        if 'results' not in run:
+            continue
+            
+        for result in run['results']:
+            level_map = {'error': 'Critical', 'warning': 'High', 'note': 'Medium', 'none': 'Low'}
+            severity = level_map.get(result.get('level', 'warning'), 'Medium')
+            
+            location = result.get('locations', [{}])[0]
+            physical_loc = location.get('physicalLocation', {})
+            
+            findings.append({
+                'tool': 'CodeQL',
+                'severity': severity,
+                'title': result['ruleId'].split('/')[-1].replace('-', ' ').title(),
+                'rule_id': result['ruleId'],
+                'file': physical_loc.get('artifactLocation', {}).get('uri', 'unknown'),
+                'line': physical_loc.get('region', {}).get('startLine', 0),
+                'message': result['message']['text'],
+                'cwe': [],
+                'owasp': []
+            })
+    return findings
+
+def parse_gitleaks(results_dir):
+    """Parse Gitleaks JSON results"""
+    gitleaks_file = results_dir / 'gitleaks.json'
+    data = load_json(gitleaks_file)
+    if not data:
+        return []
+    
+    findings = []
+    for result in data:
+        findings.append({
+            'tool': 'Gitleaks',
+            'severity': 'Critical',  # All secrets are critical
+            'title': result.get('Description', 'Secret Detected'),
+            'rule_id': result.get('RuleID', 'secret'),
+            'file': result.get('File', 'unknown'),
+            'line': result.get('StartLine', 0),
+            'message': f"Secret detected: {result.get('Secret', '***')[:20]}...",
+            'cwe': ['CWE-798'],
+            'owasp': ['A07:2021']
+        })
+    return findings
+
+def parse_bandit(results_dir):
+    """Parse Bandit JSON results"""
+    bandit_file = results_dir / 'bandit.json'
+    data = load_json(bandit_file)
+    if not data or 'results' not in data:
+        return []
+    
+    findings = []
+    severity_map = {'HIGH': 'High', 'MEDIUM': 'Medium', 'LOW': 'Low'}
+    
+    for result in data['results']:
+        findings.append({
+            'tool': 'Bandit',
+            'severity': severity_map.get(result.get('issue_severity', 'MEDIUM'), 'Medium'),
+            'title': result.get('test_name', 'Unknown'),
+            'rule_id': result.get('test_id', 'unknown'),
+            'file': result.get('filename', 'unknown'),
+            'line': result.get('line_number', 0),
+            'message': result.get('issue_text', ''),
+            'cwe': result.get('issue_cwe', {}).get('id', ''),
+            'owasp': []
+        })
+    return findings
+
+def generate_markdown_report(results_dir, output_file):
+    """Generate comprehensive Markdown report"""
+    results_dir = Path(results_dir)
+    
+    # Parse all results
+    all_findings = []
+    all_findings.extend(parse_semgrep(results_dir))
+    all_findings.extend(parse_codeql(results_dir))
+    all_findings.extend(parse_gitleaks(results_dir))
+    all_findings.extend(parse_bandit(results_dir))
+    
+    # Load summary for metadata
+    summary_file = results_dir / 'summary.txt'
+    target_name = results_dir.name
+    scan_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Group findings by severity
+    severity_order = {'Critical': 0, 'High': 1, 'Medium': 2, 'Low': 3}
+    all_findings.sort(key=lambda x: (severity_order.get(x['severity'], 4), x['file']))
+    
+    findings_by_severity = defaultdict(list)
+    for finding in all_findings:
+        findings_by_severity[finding['severity']].append(finding)
+    
+    # Count by tool
+    tool_counts = defaultdict(int)
+    for finding in all_findings:
+        tool_counts[finding['tool']] += 1
+    
+    # Generate report
+    report = []
+    report.append(f"# Security Assessment Report")
+    report.append(f"")
+    report.append(f"**Assessment Target**: `{target_name}`  ")
+    report.append(f"**Scan Date**: {scan_date}  ")
+    report.append(f"**Total Findings**: {len(all_findings)}  ")
+    report.append(f"")
+    
+    # Executive Summary
+    report.append(f"## Executive Summary")
+    report.append(f"")
+    report.append(f"| Severity | Count |")
+    report.append(f"|----------|-------|")
+    for severity in ['Critical', 'High', 'Medium', 'Low']:
+        count = len(findings_by_severity[severity])
+        if count > 0:
+            report.append(f"| {severity} | {count} |")
+    report.append(f"")
+    
+    report.append(f"### Findings by Tool")
+    report.append(f"")
+    for tool, count in sorted(tool_counts.items()):
+        report.append(f"- **{tool}**: {count} findings")
+    report.append(f"")
+    
+    # Findings Details
+    report.append(f"## Detailed Findings")
+    report.append(f"")
+    
+    for severity in ['Critical', 'High', 'Medium', 'Low']:
+        findings = findings_by_severity[severity]
+        if not findings:
+            continue
+            
+        report.append(f"### {severity} Severity ({len(findings)} findings)")
+        report.append(f"")
+        
+        for idx, finding in enumerate(findings, 1):
+            report.append(f"#### {idx}. {finding['title']}")
+            report.append(f"")
+            report.append(f"- **Tool**: {finding['tool']}")
+            report.append(f"- **Severity**: {finding['severity']}")
+            report.append(f"- **Location**: `{finding['file']}:{finding['line']}`")
+            report.append(f"- **Rule ID**: `{finding['rule_id']}`")
+            
+            if finding['cwe']:
+                cwe_str = ', '.join(finding['cwe']) if isinstance(finding['cwe'], list) else finding['cwe']
+                report.append(f"- **CWE**: {cwe_str}")
+            
+            if finding['owasp']:
+                owasp_str = ', '.join(finding['owasp']) if isinstance(finding['owasp'], list) else finding['owasp']
+                report.append(f"- **OWASP**: {owasp_str}")
+            
+            report.append(f"")
+            report.append(f"**Description**:")
+            report.append(f"```")
+            report.append(finding['message'])
+            report.append(f"```")
+            report.append(f"")
+    
+    # Recommendations
+    report.append(f"## Recommendations")
+    report.append(f"")
+    
+    if findings_by_severity['Critical']:
+        report.append(f"### Critical Priority")
+        report.append(f"")
+        report.append(f"1. **Immediately address all Critical findings** - These represent significant security risks")
+        report.append(f"2. **Review and rotate any exposed secrets** found by Gitleaks")
+        report.append(f"3. **Implement input validation** for any user-controlled data flows")
+        report.append(f"")
+    
+    if findings_by_severity['High']:
+        report.append(f"### High Priority")
+        report.append(f"")
+        report.append(f"1. **Address High severity findings** within the next sprint")
+        report.append(f"2. **Review authentication and authorization** mechanisms")
+        report.append(f"3. **Ensure all data is properly sanitized** before use")
+        report.append(f"")
+    
+    report.append(f"### General Recommendations")
+    report.append(f"")
+    report.append(f"1. **Integrate security scanning into CI/CD** to catch issues early")
+    report.append(f"2. **Conduct regular security code reviews**")
+    report.append(f"3. **Keep dependencies updated** to avoid known vulnerabilities")
+    report.append(f"4. **Implement security training** for development team")
+    report.append(f"")
+    
+    # Appendix
+    report.append(f"## Appendix")
+    report.append(f"")
+    report.append(f"### Scan Configuration")
+    report.append(f"")
+    report.append(f"- **Semgrep**: security-audit, owasp-top-ten rulesets")
+    report.append(f"- **CodeQL**: Security extended queries")
+    report.append(f"- **Gitleaks**: Secret detection")
+    report.append(f"- **Bandit**: Python security analysis")
+    report.append(f"")
+    report.append(f"### Raw Results")
+    report.append(f"")
+    report.append(f"All raw scan results are available in:")
+    report.append(f"- `semgrep.json` / `semgrep.txt`")
+    report.append(f"- `codeql.sarif`")
+    report.append(f"- `gitleaks.json`")
+    report.append(f"- `bandit.json` / `bandit.txt`")
+    report.append(f"")
+    
+    # Write report
+    output_path = Path(output_file)
+    with open(output_path, 'w') as f:
+        f.write('\n'.join(report))
+    
+    return output_path, len(all_findings)
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: generate-report <results-directory> [output-file]")
+        print("")
+        print("Example:")
+        print("  generate-report ~/assessments/results/NodeGoat-20260129/")
+        print("  generate-report ~/assessments/results/client-project/ report.md")
+        sys.exit(1)
+    
+    results_dir = sys.argv[1]
+    output_file = sys.argv[2] if len(sys.argv) > 2 else os.path.join(results_dir, 'SECURITY_REPORT.md')
+    
+    if not os.path.isdir(results_dir):
+        print(f"Error: Directory not found: {results_dir}")
+        sys.exit(1)
+    
+    print(f"Generating security report from: {results_dir}")
+    print(f"Output file: {output_file}")
+    print("")
+    
+    try:
+        output_path, finding_count = generate_markdown_report(results_dir, output_file)
+        print(f"✓ Report generated successfully!")
+        print(f"✓ Total findings: {finding_count}")
+        print(f"✓ Report saved to: {output_path}")
+        print("")
+        print("View the report:")
+        print(f"  cat {output_path}")
+        print(f"  less {output_path}")
+    except Exception as e:
+        print(f"Error generating report: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
