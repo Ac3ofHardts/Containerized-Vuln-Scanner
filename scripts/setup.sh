@@ -59,6 +59,7 @@ TARGET=$1
 OUTPUT=${2:-/output}
 
 mkdir -p $OUTPUT
+export PATH="/opt/codeql:$PATH"
 
 echo "=== Running Security Scans on $TARGET ==="
 echo "=== Saving results to $OUTPUT ==="
@@ -69,6 +70,49 @@ semgrep --config=p/security-audit --config=p/owasp-top-ten --no-git-ignore --qui
 semgrep --config=p/security-audit --config=p/owasp-top-ten --no-git-ignore --quiet $TARGET > $OUTPUT/semgrep.txt 2>&1
 SEMGREP_COUNT=$(jq '.results | length' $OUTPUT/semgrep.json 2>/dev/null || echo "0")
 echo "    Found $SEMGREP_COUNT findings - saved to semgrep.json, semgrep.txt"
+
+echo ""
+echo "[+] Running CodeQL..."
+# Detect primary language
+CODEQL_LANG=""
+if find $TARGET -name "*.js" -o -name "*.ts" -o -name "*.jsx" -o -name "*.tsx" | head -1 | grep -q .; then
+    CODEQL_LANG="javascript"
+elif find $TARGET -name "*.java" | head -1 | grep -q .; then
+    CODEQL_LANG="java"
+elif find $TARGET -name "*.py" | head -1 | grep -q .; then
+    CODEQL_LANG="python"
+elif find $TARGET -name "*.go" | head -1 | grep -q .; then
+    CODEQL_LANG="go"
+elif find $TARGET -name "*.cpp" -o -name "*.c" -o -name "*.h" | head -1 | grep -q .; then
+    CODEQL_LANG="cpp"
+fi
+
+if [ -n "$CODEQL_LANG" ]; then
+    echo "    Detected language: $CODEQL_LANG"
+    
+    # Create database with less verbose output
+    codeql database create /tmp/codeql-db \
+        --language=$CODEQL_LANG \
+        --source-root=$TARGET \
+        --overwrite 2>&1 | tail -3
+    
+    # Run analysis with SARIF output only
+    codeql database analyze /tmp/codeql-db \
+        --format=sarif-latest \
+        --output=$OUTPUT/codeql.sarif \
+        --sarif-category=security \
+        --sarif-add-query-help \
+        -- 2>&1 | grep -E "Compiling|Running|Interpreting|Finalizing" || true
+    
+    CODEQL_COUNT=$(jq '[.runs[].results[]] | length' $OUTPUT/codeql.sarif 2>/dev/null || echo "0")
+    echo "    Found $CODEQL_COUNT findings - saved to codeql.sarif"
+    
+    # Cleanup
+    rm -rf /tmp/codeql-db
+else
+    echo "    No supported languages detected, skipping CodeQL"
+    CODEQL_COUNT=0
+fi
 
 echo ""
 echo "[+] Running bandit (Python)..."
@@ -100,11 +144,13 @@ Scanner: security-scanner template
 Files scanned: $(find $TARGET -type f | wc -l)
 
 Findings by tool:
-- Semgrep (SAST):        $SEMGREP_COUNT issues
+- CodeQL (Deep SAST):    $CODEQL_COUNT issues
+- Semgrep (Fast SAST):   $SEMGREP_COUNT issues
 - Gitleaks (Secrets):    $GITLEAKS_COUNT secrets
 - Bandit (Python):       $BANDIT_COUNT issues
 
 See individual report files for details:
+- codeql.sarif - Deep dataflow analysis (GitHub-compatible)
 - semgrep.json/txt - Code vulnerabilities
 - gitleaks.json - Hardcoded secrets
 - bandit.json/txt - Python-specific issues
