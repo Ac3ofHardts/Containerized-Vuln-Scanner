@@ -1,0 +1,50 @@
+COMMERCIAL LICENSE AGREEMENT
+Containreized Vulnerability Scanner
+
+This Commercial License Agreement ("Agreement") is entered into between:
+
+LICENSOR: Evan Hardt ("Licensor")
+LICENSEE: [Company Name] ("Licensee")
+
+EFFECTIVE DATE: [Date]
+
+1. GRANT OF LICENSE
+   Licensor grants Licensee a non-exclusive, worldwide license to use, modify,
+   and distribute the Incus Security Scanner software ("Software") for 
+   commercial purposes without the requirements of AGPL v3.
+
+2. PERMITTED USES
+   - Proprietary modifications
+   - SaaS/hosted deployments
+   - Integration into commercial products
+   - Distribution to customers (internal or external)
+
+3. RESTRICTIONS
+   - May not sublicense the Software to third parties for resale
+   - May not remove copyright notices
+   - May not compete directly with Licensor's offering
+
+4. FEES
+   [Specify one-time fee, subscription, revenue share, etc.]
+
+5. SUPPORT (Optional)
+   [Specify support terms if included]
+
+6. WARRANTY DISCLAIMER
+   SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND.
+
+7. LIMITATION OF LIABILITY
+   LICENSOR SHALL NOT BE LIABLE FOR ANY DAMAGES ARISING FROM USE OF SOFTWARE.
+
+8. TERM AND TERMINATION
+   This license is perpetual unless terminated for breach.
+
+LICENSOR:
+Evan Hardt
+Signature: _________________
+Date: _________________
+
+LICENSEE:
+[Company Name]
+Signature: _________________
+Date: _________________
