@@ -1,6 +1,11 @@
-# Test directories
+# Test directories and results
 assessments/
 *.log
+test-results/
+
+# Generated reports
+*SECURITY_REPORT.md
+*-report.md
 
 # IDE
 .vscode/
@@ -8,7 +13,23 @@ assessments/
 *.swp
 *.swo
 *~
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Temporary files
+*.tmp
+*.bak
+.~*
 
 # OS
-.DS_Store
 Thumbs.db
+desktop.ini
+
+# Don't ignore example outputs
+!docs/sample-report.md
+!examples/
