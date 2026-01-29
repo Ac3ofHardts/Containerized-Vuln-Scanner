@@ -1,0 +1,54 @@
+rules:
+  - id: custom-hardcoded-api-key
+    pattern: |
+      api_key = "..."
+    message: Hardcoded API key detected
+    severity: ERROR
+    languages: [python, javascript, go]
+    metadata:
+      cwe: CWE-798
+      owasp: A07:2021
+      category: security
+    
+  - id: custom-weak-crypto
+    patterns:
+      - pattern: crypto.createHash($ALGO)
+      - metavariable-regex:
+          metavariable: $ALGO
+          regex: (md5|sha1)
+    message: Weak cryptographic algorithm detected. Use SHA-256 or better.
+    severity: WARNING
+    languages: [javascript]
+    metadata:
+      cwe: CWE-327
+      category: security
+
+  - id: custom-sql-concat
+    pattern: |
+      "SELECT * FROM " + $TABLE + " WHERE " + $CONDITION
+    message: SQL query built with string concatenation. Use parameterized queries.
+    severity: ERROR
+    languages: [javascript, python]
+    metadata:
+      cwe: CWE-89
+      owasp: A03:2021
+      category: security
+
+  - id: custom-debug-code
+    patterns:
+      - pattern-either:
+          - pattern: console.log(...)
+          - pattern: print("DEBUG:", ...)
+    message: Debug code should be removed before production
+    severity: WARNING
+    languages: [javascript, python]
+    metadata:
+      category: best-practice
+
+  - id: custom-todo-comment
+    pattern-regex: "TODO|FIXME|HACK"
+    message: TODO comment found - track in issue tracker
+    severity: INFO
+    languages: [generic]
+    metadata:
+      category: maintainability
