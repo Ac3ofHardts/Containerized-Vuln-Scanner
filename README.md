@@ -2,7 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Commercial License Available](https://img.shields.io/badge/Commercial%20License-Available-green.svg)](LICENSE-COMMERCIAL.template)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/Ac3ofHardts/Containerized-Vuln-Scanner/releases)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com/Ac3ofHardts/Containerized-Vuln-Scanner/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://github.com/Ac3ofHardts/Containerized-Vuln-Scanner)
 
 A lightweight, containerized security scanning solution for static code analysis and vulnerability assessment. Built with Incus for isolation, portability, and minimal storage overhead.
@@ -24,7 +24,7 @@ JavaScript/TypeScript, Python, Java, Go, C/C++, Ruby, PHP, C#, and [many more vi
 
 ## Prerequisites
 
-- Ubuntu/Debian-based Linux (tested on Ubuntu 22.04, Pop!_OS 22.04)
+- Ubuntu/Debian-based Linux (tested on Ubuntu 22.04, Pop!_OS 22.04) (Release v1.1.0 may fix for older versions)
 - [Incus](https://linuxcontainers.org/incus/docs/main/installing/) installed and initialized
 - 50GB available disk space
 - 4GB+ RAM recommended
