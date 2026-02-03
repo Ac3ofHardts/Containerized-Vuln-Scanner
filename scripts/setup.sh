@@ -14,24 +14,70 @@ echo ""
 
 # Check if Incus is installed
 if ! command -v incus &> /dev/null; then
-    echo "ERROR: Incus is not installed"
-    echo "Please install Incus first: https://linuxcontainers.org/incus/docs/main/installing/"
-    exit 1
+    echo "Incus is not installed. Installing from Zabbly repository..."
+    echo ""
+    
+    # Detect OS version
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS_CODENAME=$VERSION_CODENAME
+        
+        if [ -z "$OS_CODENAME" ]; then
+            # Fallback for Pop!_OS and others
+            OS_CODENAME=$(lsb_release -sc 2>/dev/null || echo "jammy")
+        fi
+    else
+        OS_CODENAME="jammy"
+    fi
+    
+    echo "Detected OS codename: $OS_CODENAME"
+    echo ""
+    
+    # Install Zabbly repository
+    echo "[1/7] Adding Zabbly Incus repository..."
+    sudo mkdir -p /etc/apt/keyrings/
+    curl -fsSL https://pkgs.zabbly.com/key.asc | sudo gpg --dearmor -o /etc/apt/keyrings/zabbly.gpg
+    
+    echo "Types: deb
+URIs: https://pkgs.zabbly.com/incus/stable
+Suites: $OS_CODENAME
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/zabbly.gpg" | sudo tee /etc/apt/sources.list.d/zabbly-incus-stable.sources
+    
+    # Install Incus and ZFS tools
+    echo ""
+    echo "[2/7] Installing Incus and dependencies..."
+    sudo apt update
+    sudo apt install -y incus zfsutils-linux
+    
+    # Add user to incus-admin group
+    echo ""
+    echo "[3/7] Adding user to incus-admin group..."
+    sudo usermod -a -G incus-admin $USER
+    
+    echo ""
+    echo "⚠️  IMPORTANT: You must log out and back in for group membership to take effect!"
+    echo ""
+    read -p "Press Enter to continue (you can finish setup now and log out later)..."
+    
+else
+    echo "✓ Incus is already installed"
 fi
 
-echo "[1/4] Installing required tools..."
+echo "[4/7] Installing required tools..."
 sudo apt update
 sudo apt install -y jq git curl wget
 
 echo ""
-echo "[2/4] Creating security-scanner base container..."
+echo "[5/7] Creating security-scanner base container..."
 incus launch images:ubuntu/24.04 security-scanner
 
 echo "Waiting for container to start..."
 sleep 5
 
 echo ""
-echo "[3/4] Installing security tools in container..."
+echo "[6/7] Installing security tools in container..."
 incus exec security-scanner -- bash << 'CONTAINER_SETUP'
 # Update system
 apt update && apt upgrade -y
@@ -58,7 +104,7 @@ mkdir -p /opt/scanners
 CONTAINER_SETUP
 
 echo ""
-echo "[4/4] Creating scan script in container..."
+echo "[7/7] Creating scan script in container..."
 incus exec security-scanner -- bash << 'EOF'
 cat > /opt/scanners/run-scans.sh << 'SCANSCRIPT'
 #!/bin/bash
