@@ -2,6 +2,7 @@
 assessments/
 *.log
 test-results/
+results/
 
 # Generated reports
 *SECURITY_REPORT.md

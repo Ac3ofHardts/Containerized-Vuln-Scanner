@@ -1,0 +1,32 @@
+# Git
+.git/
+.gitignore
+.github/
+
+# Documentation
+*.md
+!README.md
+docs/
+
+# Examples
+examples/
+
+# Results and outputs
+results/
+*.json
+*.txt
+*.sarif
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db

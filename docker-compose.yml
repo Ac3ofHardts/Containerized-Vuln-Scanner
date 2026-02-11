@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  vuln-scanner:
+    build: .
+    image: containerized-vuln-scanner:latest
+    container_name: vuln-scanner
+    volumes:
+      # Mount results to host
+      - ./results:/scan/results
+      # Optional: mount custom Semgrep rules
+      - ./custom-rules:/scan/custom-rules:ro
+    environment:
+      - TZ=America/Chicago
+    stdin_open: true
+    tty: true
